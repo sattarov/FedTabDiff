@@ -147,7 +147,7 @@ def generate_samples(
     Returns:
         torch.Tensor: matrix of generated samples
     """
-
+    device = next(synthesizer.parameters()).device
     if (n_samples is None) and (label is None):
         raise Exception("either n_samples or label needs to be given")
 
@@ -155,7 +155,10 @@ def generate_samples(
         n_samples = len(label)
         
     # initialize noise
-    z_norm = torch.randn((n_samples, encoded_dim))
+    z_norm = torch.randn((n_samples, encoded_dim)).float()
+
+    label = label.to(device)
+    z_norm = z_norm.to(device)
 
     # iterate over diffusion steps
     pbar = tqdm(iterable=reversed(range(0, last_diff_step)))
@@ -165,10 +168,10 @@ def generate_samples(
         pbar.set_description(f"SAMPLING STEP: {i:4d}")
 
         # sample timestamps t
-        t = torch.full((n_samples,), i, dtype=torch.long)
+        t = torch.full((n_samples,), i, dtype=torch.long).to(device)
 
         # conduct forward encoder/decoder pass
-        model_out = synthesizer(z_norm.float(), t, label)
+        model_out = synthesizer(z_norm, t, label)
 
         # reverse diffusion step, i.e. noise removal
         z_norm = diffuser.p_sample_gauss(model_out, z_norm, t)
