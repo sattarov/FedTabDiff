@@ -4,11 +4,15 @@ import pandas as pd
 from utils import get_parameters, set_parameters, collect_fidelity
 from fedtabdiff_modules import init_model, train_model, generate_samples, decode_samples
 from sdv.metadata import SingleTableMetadata
+from logging import INFO, DEBUG
+from flwr.common.logger import log
 
 
 class FlowerClient(fl.client.NumPyClient):
 
-    def __init__(self, cid, train_loader, test_loader, exp_params):
+    def __init__(self, cid, train_loader, test_loader, exp_params) -> None:
+        super().__init__()
+
         """Initializes the client.
 
         Args:
@@ -34,7 +38,8 @@ class FlowerClient(fl.client.NumPyClient):
         Returns:
             List[np.ndarray]: Model parameters.
         """
-        print(f"[Client {self.cid}] get_parameters")
+        # print(f"[Client {self.cid}] get_parameters")
+        log(DEBUG, f"[Client {self.cid}] get_parameters")
         return get_parameters(self.synthesizer)
 
     def fit(self, parameters, config):
@@ -49,9 +54,9 @@ class FlowerClient(fl.client.NumPyClient):
             int: Number of samples used for training.
             dict: Dictionary containing training loss.
         """
-        # server_round = config['server_round']
+        server_round = config['server_round']
         n_samples = len(self.train_loader.dataset)
-        print(f"[Client {self.cid}] fit, n_samples: {n_samples}")
+        log(INFO, f"[Client {self.cid}] fit, server round: {server_round}, n_samples: {n_samples}")
         set_parameters(self.synthesizer, parameters)
         loss = self.train_epochs_fn(
             synthesizer=self.synthesizer,
@@ -61,7 +66,7 @@ class FlowerClient(fl.client.NumPyClient):
         )
 
         return get_parameters(self.synthesizer), n_samples, {'loss': loss}
-
+    
     def evaluate(self, parameters, config):
         """Evaluate the model on the locally held test set.
 
@@ -74,7 +79,6 @@ class FlowerClient(fl.client.NumPyClient):
             int: Number of samples in the test set.
             dict: Dictionary containing evaluation metric result.
         """
-
         # get server round
         server_round = config['server_round']
         # get number of samples
@@ -84,8 +88,8 @@ class FlowerClient(fl.client.NumPyClient):
         loss = 0.0
 
         # evaluate server every eval_rate_client rounds
-        if (server_round % config['eval_rate_client'] == 0) and (server_round > 0):
-            print(f"[Client {self.cid}] evaluate, server round: {server_round}, n_samples: {n_samples}")
+        if (server_round % self.exp_params['eval_rate_client'] == 0) and (server_round > 0):
+            log(INFO, f"[Client {self.cid}] evaluate, server round: {server_round}, n_samples: {n_samples}")
             # initialize model
             set_parameters(self.synthesizer, parameters)
 
@@ -122,9 +126,8 @@ class FlowerClient(fl.client.NumPyClient):
                 synthetic_data=generated_samples_df,
                 metadata=metadata)
 
-        print(f"Client-side fidelity {fidelity_score.get('fidelity')}")
+        log(INFO, f"[Client {self.cid}] fidelity {fidelity_score.get('fidelity')}")
         return loss, n_samples, fidelity_score
-
 
 def get_client_fn(train_loaders, test_loaders, exp_params):
     """Return a function to construct a client.
@@ -133,25 +136,20 @@ def get_client_fn(train_loaders, test_loaders, exp_params):
     
     Args:
         train_loaders (torch.utils.data.DataLoader): train data loader
+        test_loaders (torch.utils.data.DataLoader): test data loader
         exp_params (dict): experiment parameters
     Returns:
         function to construct a client
     """
-    def client_fn(cid) -> FlowerClient:
+    def client_fn(context: fl.common.Context) -> fl.client.Client:
+        log(INFO, f"Client {context.node_config['partition-id']} is created.")
+        cid = context.node_config["partition-id"]
         train_loader = train_loaders[int(cid)]
         test_loader = test_loaders[int(cid)]
-        return FlowerClient(cid, train_loader, test_loader, exp_params)
+        return FlowerClient(cid, train_loader, test_loader, exp_params).to_client()
 
     return client_fn
 
-
-def get_eval_config(exp_params):
-    def client_eval_config(server_round: int):
-        """Return training configuration dict for each round."""
-        client_config = {
-            "server_round": server_round,
-            **exp_params
-        }
-        return client_config
-
-    return client_eval_config
+def get_eval_config(server_round: int):
+    """Return training configuration dict for each round."""
+    return {"server_round": server_round}

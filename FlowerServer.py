@@ -3,7 +3,8 @@ from utils import set_parameters, collect_fidelity
 from fedtabdiff_modules import init_model, generate_samples, decode_samples
 import flwr as fl
 from sdv.metadata import SingleTableMetadata
-
+from logging import INFO, DEBUG
+from flwr.common.logger import log
 
 def get_evaluate_server_fn(test_loader, exp_params):
     """The evaluate function for the server. It will be executed by Flower after every round.
@@ -30,6 +31,7 @@ def get_evaluate_server_fn(test_loader, exp_params):
         Returns:
             dict: Server-side fidelity score
         """
+        fidelity_score = {}
         # evaluate server every eval_rate_server rounds
         if (server_round % exp_params['eval_rate_server'] == 0) and (server_round > 0):
 
@@ -38,11 +40,11 @@ def get_evaluate_server_fn(test_loader, exp_params):
             synthesizer = synthesizer.to(exp_params['device'])
 
             # Update model with the latest parameters
-            print(f"[Server evaluation, server round: {server_round}")
+            log(INFO, f"[Server evaluation, server round: {server_round}")
             set_parameters(synthesizer, parameters)  
             
             # get test set and label
-            print(f"Loading eval set")
+            # print(f"Loading eval set")
             test_set, test_label = test_loader
             
             # generate new samples
@@ -76,8 +78,8 @@ def get_evaluate_server_fn(test_loader, exp_params):
                 synthetic_data=generated_samples_df,
                 metadata=metadata)
 
-            print(f"Server-side fidelity {fidelity_score.get('fidelity')}")
-
-            return None, fidelity_score
+            log(INFO, f"Server-side fidelity {fidelity_score.get('fidelity')}")
+        
+        return None, fidelity_score
 
     return evaluate_server

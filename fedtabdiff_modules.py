@@ -7,6 +7,8 @@ import numpy as np
 from torch import optim
 import torch
 from torch import nn
+from flwr.common.logger import log
+from logging import INFO, DEBUG
 
 
 def init_model(exp_params):
@@ -19,7 +21,7 @@ def init_model(exp_params):
         synthesizer: synthesizer model
         diffuser: diffuser model
     """
-    print(f"Initializing FedTabDiff model")
+    log(INFO, f"Initializing FedTabDiff model")
     # define synthesizer
     synthesizer = MLPSynthesizer(
         d_in=exp_params['encoded_dim'],
@@ -119,7 +121,7 @@ def train_model(synthesizer, diffuser, train_loader, exp_params, optimizer=None)
             break
 
     # average of rec errors
-    total_losses_mean = np.mean(np.array(total_losses))
+    total_losses_mean = np.mean(np.array(total_losses)).item()
 
     return total_losses_mean
 
